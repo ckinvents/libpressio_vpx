@@ -76,6 +76,7 @@ add_library(libpressio
   ./src/plugins/compressors/compressor_base.cc
   ./src/plugins/compressors/noop.cc
   ./src/plugins/compressors/pressio.cc
+  ./src/plugins/compressors/vpx.cc
   ./src/plugins/metrics/composite.cc
   ./src/plugins/metrics/external.cc
   ./src/plugins/metrics/error_stat.cc
@@ -663,6 +664,16 @@ if(LIBPRESSIO_HAS_LUA)
   target_sources(libpressio PRIVATE
     ${CMAKE_CURRENT_SOURCE_DIR}/src/plugins/compressors/lambda_fn.cc
     )
+endif()
+
+option(LIBPRESSIO_HAS_LIBVPX "build plugin for vp8/vp9 codecs" ON)
+if(LIBPRESSIO_HAS_LIBVPX)
+  set(LIBPRESSIO_FEATURES "${LIBPRESSIO_FEATURES} libvpx")
+  find_package(PkgConfig REQUIRED)
+  pkg_search_module(libvpx REQUIRED IMPORTED_TARGET GLOBAL vpx)
+  target_link_libraries(libpressio PRIVATE PkgConfig::libvpx)
+  target_sources(libpressio PRIVATE
+    ${CMAKE_CURRENT_SOURCE_DIR}/src/plugins/compressors/vpx.cc)
 endif()
 
 option(LIBPRESSIO_HAS_LIBDISTRIBUTED "build plugins based on distributed work queues" OFF)
