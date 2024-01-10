@@ -100,9 +100,15 @@ class vpx_plugin : public libpressio_compressor_plugin
     }
 
     int set_options_impl(pressio_options const& options) override {
-        get(options, "vpx:codec", &codec_name);
-        get(options, "vpx:frame_fmt", &frame_fmt);
+        bool preconf_change = false;
+        get_preconf(options, "vpx:codec", &codec_name, preconf_change);
+        get_preconf(options, "vpx:frame_fmt", &frame_fmt, preconf_change);
         get(options, "vpx:enc_frame_flags", &enc_flags);
+        // Reinit context if config changed
+        if (encode_is_init && preconf_change)
+        {
+            init_enc_ctx();
+        } 
         return 0;
     }
 
@@ -123,14 +129,19 @@ class vpx_plugin : public libpressio_compressor_plugin
     {
         struct pressio_options options;
         set(options, "vpx:codec", "codec implementation (either vp8 or vp9) to use");
-        set(options, "vpx:frame_fmt", "raw color data format used by input/decoded frames");
-        set(options, "vpx:enc_frame_flags", "per-frame encoding parameters, refer to \"Encoded Frame Flags\"");
+        set(options, "vpx:frame_fmt", "(*pre-config only*) raw color data format used by input/decoded frames");
+        set(options, "vpx:enc_frame_flags", "(*per-call*) frame encoding parameters, refer to \"Encoded Frame Flags\"");
         return options;
     }
     
     int compress_impl(const pressio_data* input, pressio_data* output) override
     {
         vpx_codec_err_t res = VPX_CODEC_OK;
+        // Create encoder context on first call
+        if (!encode_is_init)
+        {
+            init_enc_ctx();
+        }
         // Frame or termination
         vpx_image_t* frame = NULL;
         // TODO: See about adding in-place buffer use.
@@ -150,7 +161,7 @@ class vpx_plugin : public libpressio_compressor_plugin
             }
         }
         // Pass to compressor
-        res = vpx_codec_encode(this->encode_ctx, frame, encode_ctr, 1,
+        res = vpx_codec_encode(&this->encode_ctx, frame, encode_ctr, 1,
                                this->enc_flags, this->deadline);
         if (res != VPX_CODEC_OK)
         {
@@ -161,7 +172,7 @@ class vpx_plugin : public libpressio_compressor_plugin
         // Return buffer packets
         vpx_codec_iter_t iter = NULL;
         const vpx_codec_cx_pkt_t* enc_pkt;
-        while (enc_pkt = vpx_codec_get_cx_data(this->encode_ctx, &iter))
+        while (enc_pkt = vpx_codec_get_cx_data(&this->encode_ctx, &iter))
         {
             switch (enc_pkt->kind)
             {
@@ -184,12 +195,12 @@ class vpx_plugin : public libpressio_compressor_plugin
         
         // Pass to decoder
         uint8_t* src = reinterpret_cast<uint8_t*>(input->data());
-        res = vpx_codec_decode(this->decode_ctx, src, input->size_in_bytes(),
+        res = vpx_codec_decode(&this->decode_ctx, src, input->size_in_bytes(),
                                NULL, 0);
         
         // Return buffer packets
         vpx_codec_iter_t iter = NULL;
-        vpx_image_t* frame = vpx_codec_get_frame(this->decode_ctx, &iter);
+        vpx_image_t* frame = vpx_codec_get_frame(&this->decode_ctx, &iter);
         *output = pressio_data::copy(pressio_byte_dtype,
             frame->img_data, {frame->w, frame->h, frame->bit_depth});
         
@@ -228,14 +239,38 @@ class vpx_plugin : public libpressio_compressor_plugin
     vpx_enc_frame_flags_t enc_flags = 0;
     vpx_enc_deadline_t deadline = VPX_DL_REALTIME;
 
-    vpx_codec_ctx_t* encode_ctx = NULL;
+    bool encode_is_init = false;
+    bool decode_is_init = false;
+    vpx_codec_ctx_t encode_ctx;
     vpx_codec_pts_t encode_ctr = 0;
-    vpx_codec_ctx_t* decode_ctx = NULL;
+    vpx_codec_ctx_t decode_ctx;
     vpx_codec_pts_t decode_ctr = 0;
 
     int codec_error(vpx_codec_err_t rc)
     {
         return set_error(int(rc), PVPX_CODEC_ERR.at(rc));
+    }
+
+    template <class PointerType, class StringType>
+    bool get_preconf(
+            pressio_options const& options, StringType&& key, PointerType value, bool& update_flag) const
+    {
+        PointerType new_value;
+        pressio_options_key_status status = get(options, key, value);
+        update_flag |=
+            (status == pressio_options_key_set && *value != *new_value)
+        return update_flag;
+    }
+
+    void init_enc_ctx()
+    {
+        vpx_codec_iface_t* interface =
+        get_vpx_encoder_by_name(codec_name.c_str())->codec_interface();
+        // PLACEHOLDER
+        vpx_codec_enc_cfg_t config;
+        vpx_codec_enc_config_default(interface, &config, 0);
+        vpx_codec_enc_init(&encode_ctx, interface, &config, 0);
+        encode_is_init = true;
     }
 
     static vpx_fixed_buf_t vpx_wrap_buf(void* buf, size_t size_bytes)
