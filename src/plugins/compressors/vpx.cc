@@ -9,7 +9,7 @@
 #include "pressio_options.h"
 #include "pressio_data.h"
 #include "pressio_compressor.h"
-
+#include "cleanup.h"
 
 #include "tools_common.h"
 #include "vpx/vpx_codec.h"
@@ -34,7 +34,6 @@ namespace libpressio { namespace vpx {
  * vpx_codec_er_flags_t : error resilience? LOOK UP
  *      ...
  * vpx_codec_flags_t: passed to codec_init
- *      
  */
 
 const std::vector<std::string> PVPX_CODECS = {
@@ -86,6 +85,27 @@ const std::map<std::string, int> PVPX_DL {
     {"best_quality", VPX_DL_BEST_QUALITY}
 };
 
+template <class cfg_t>
+class codec_ctx {
+    vpx_codec_ctx_t ctx;
+    vpx_codec_pts_t ctr;
+
+    public:
+    codec_ctx(const char* name, const std::string& type)
+    {
+        if (name == "encoder")
+        {
+            codec_ctx(name, )
+        }
+    }
+
+    private:
+    vpx_codec_iface_t get_iface(const std::string& name)
+    {
+        
+    }
+};
+
 class vpx_plugin : public libpressio_compressor_plugin
 {
     public:
@@ -129,8 +149,23 @@ class vpx_plugin : public libpressio_compressor_plugin
     {
         struct pressio_options options;
         set(options, "vpx:codec", "codec implementation (either vp8 or vp9) to use");
-        set(options, "vpx:frame_fmt", "(*pre-config only*) raw color data format used by input/decoded frames");
-        set(options, "vpx:enc_frame_flags", "(*per-call*) frame encoding parameters, refer to \"Encoded Frame Flags\"");
+        set(options, "vpx:frame_fmt", "raw color data format used by input/decoded frames");
+        // ENCODER CFG STRUCT (LIMITED subset of cfg params)
+        set(options, "vpx:nthreads", "Maximum number of threads to use internally");
+        set(options, "vpx:bitstream_profile", "Bitstream profile for codec");
+        // Bitdepth, timebase & framesize auto-configured
+        set(options, "vpx:error_resilient_mode", "Enable error resillience modes");
+        set(options, "vpx:multi_pass_mode", "Multi-pass encoding flags");
+        // Lag frames and drop frames set to false - consider if enable option in future
+        set(options, "vpx:rc_end_usage", "Rate control algorithm to use");
+        set(options, "vpx:target_bitrate", "Target data rate");
+        set(options, "vpx:best_quantizer", "Best quality quantizer");
+        set(options, "vpx:worst_quantizer", "Worst quality quantizer");
+        set(options, "vpx:keyframe_mode", "Keyframe placement mode");
+        set(options, "vpx:keyframe_min", "Minimum keyframe interval (if automatic)");
+        set(options, "vpx:keyframe:max", "Maximum keyframe interval (if automatic)");
+        // Look into vizier modes, if you can find anything on them
+
         return options;
     }
     
@@ -241,9 +276,12 @@ class vpx_plugin : public libpressio_compressor_plugin
 
     bool encode_is_init = false;
     bool decode_is_init = false;
+
     vpx_codec_ctx_t encode_ctx;
+    cleanup clean_enc_ctx = 
     vpx_codec_pts_t encode_ctr = 0;
     vpx_codec_ctx_t decode_ctx;
+    cleanup clean_enc_ctx = 
     vpx_codec_pts_t decode_ctr = 0;
 
     int codec_error(vpx_codec_err_t rc)
