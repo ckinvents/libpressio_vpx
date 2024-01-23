@@ -158,6 +158,9 @@ class vpx_plugin : public libpressio_compressor_plugin
         set(options, "vpx:multi_pass_mode", "Multi-pass encoding flags");
         // Lag frames and drop frames set to false - consider if enable option in future
         set(options, "vpx:rc_end_usage", "Rate control algorithm to use");
+        set(options, "vpx:rc_resize_allowed", "Enable/disable spatial resampling");
+        set(options, "vpx:rc_scale_factor", "Percentage of input frame size to scale to");
+        
         set(options, "vpx:target_bitrate", "Target data rate");
         set(options, "vpx:best_quantizer", "Best quality quantizer");
         set(options, "vpx:worst_quantizer", "Worst quality quantizer");
